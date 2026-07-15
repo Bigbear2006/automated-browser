@@ -1,8 +1,10 @@
+import difflib
 from contextlib import asynccontextmanager
 
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Locator,
     Page,
     async_playwright,
 )
@@ -60,6 +62,7 @@ class BrowserService:
 
     async def get_snapshot(self, depth: int | None = None) -> str:
         """Get accessibility snapshot with element references for AI."""
+        logger.info('[*] Get page snapshot')
         page = await self.get_active_page()
         snapshot = await page.locator('body').aria_snapshot(
             mode='ai', depth=depth
@@ -67,97 +70,69 @@ class BrowserService:
         return snapshot
 
     async def navigate(self, url: str) -> str | None:
+        logger.info(f'[*] Navigate to {url}')
         page = await self.get_active_page()
         rsp = await page.goto(url)
         return rsp.url if rsp else None
 
-    async def click(self, ref: str) -> bool:
+    async def find_element(self, ref: str) -> Locator:
         page = await self.get_active_page()
 
-        try:
-            # Try using locator with aria attributes first
-            locator = page.locator(
-                f"[data-aria-ref='{ref}'], [aria-ref='{ref}']"
-            )
+        # Try using locator with aria attributes first
+        locator = page.locator(f'aria-ref={ref}')
+        count = await locator.count()
+
+        if count == 0:
+            # Then our custom ref
+            locator = page.locator(f'data-agent-ref={ref}')
             count = await locator.count()
 
-            if count > 0:
-                await locator.first.click()
-            else:
-                # Fallback: extract index and click from interactive elements
-                ref_num = int(ref[1:]) if ref.startswith('e') else 0
-                elements = await page.query_selector_all(
-                    "button, a[href], input[type='button'], "
-                    "input[type='submit'], textarea, select, "
-                    "[role='button'], [role='link']"
-                )
-                if ref_num < len(elements):
-                    await elements[ref_num].click()
-                else:
-                    raise ValueError(f'Element {ref} not found')
-        except Exception as e:
-            raise ValueError(f'Could not click element {ref}: {str(e)}') from e
+        if count == 0:
+            locator = page.get_by_text(ref)
 
-        return True
+        return locator
 
-    async def type_text(self, ref: str, text: str) -> bool:
-        page = await self.get_active_page()
+    async def click(self, ref: str) -> str:
+        locator = await self.find_element(ref)
+        count = await locator.count()
 
-        try:
-            # Try aria attributes first
-            locator = page.locator(
-                f"[data-aria-ref='{ref}'], [aria-ref='{ref}']"
-            )
-            count = await locator.count()
+        if count > 0:
+            await locator.first.click()
+            return f'Clicked element {ref}'
 
-            if count > 0:
-                await locator.first.fill(text)
-            else:
-                # Fallback: use index approach
-                ref_num = int(ref[1:]) if ref.startswith('e') else 0
-                inputs = await page.query_selector_all('input, textarea')
-                if ref_num < len(inputs):
-                    await inputs[ref_num].fill(text)
-                else:
-                    raise ValueError(f'Input element {ref} not found')
-        except Exception as e:
-            raise ValueError(
-                f'Could not type into element {ref}: {str(e)}'
-            ) from e
+        return f'Element {ref} not found'
 
-        return True
+    async def type_text(self, ref: str, text: str) -> str:
+        locator = await self.find_element(ref)
+        count = await locator.count()
 
-    async def press_key(self, ref: str, key: str) -> bool:
-        page = await self.get_active_page()
+        if count > 0:
+            await locator.first.fill(text)
+            return f'Typed text into element {ref}'
 
-        try:
-            locator = page.locator(
-                f"[data-aria-ref='{ref}'], [aria-ref='{ref}']"
-            )
-            count = await locator.count()
+        return (
+            f'Could not type into element {ref}. More likely element not found'
+        )
 
-            if count > 0:
-                await locator.first.press(key)
-            else:
-                ref_num = int(ref[1:]) if ref.startswith('e') else 0
-                elements = await page.query_selector_all(
-                    "input, textarea, button, a, [role='button']"
-                )
-                if ref_num < len(elements):
-                    await elements[ref_num].press(key)
-                else:
-                    raise ValueError(f'Element {ref} not found')
-        except Exception as e:
-            raise ValueError(
-                f'Could not press key on element {ref}: {str(e)}'
-            ) from e
+    async def press_key(self, ref: str, key: str) -> str:
+        locator = await self.find_element(ref)
+        count = await locator.count()
 
-        return True
+        if count > 0:
+            await locator.first.press(key)
+            return f'Pressed key {key} on element ref'
+
+        return f'Could not press key {key} on element {ref}'
 
     async def get_current_url(self) -> str:
         page = await self.get_active_page()
         logger.info(f'[*] Get current URL: {page.url}')
         return page.url
+
+    async def wait(self, timeout: int) -> str:
+        page = await self.get_active_page()
+        await page.wait_for_timeout(timeout)
+        return f'Wait for {timeout} milliseconds...'
 
     async def screenshot(self, path: str = 'screenshot.png') -> bytes:
         page = await self.get_active_page()
@@ -218,156 +193,6 @@ class BrowserService:
         url_closed = pages[index].url
         await pages[index].close()
         return f'Вкладка с индексом {index} ({url_closed}) успешно закрыта.'
-
-    async def get_elements(self) -> str:
-        logger.info('[*] Get elements')
-        # ruff: disable[E501]
-        SNAPSHOT_JS = """
-        () => {
-          let counter = 0;
-          const nextId = () => 'e' + (++counter);
-
-          function isVisible(el) {
-            const rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return false;
-            const style = getComputedStyle(el);
-            return style.visibility !== 'hidden' && style.display !== 'none';
-          }
-
-          function accessibleName(el) {
-            return (
-              el.getAttribute('aria-label') ||
-              el.labels?.[0]?.innerText ||
-              el.getAttribute('placeholder') ||
-              el.getAttribute('title') ||
-              el.innerText ||
-              el.getAttribute('name') ||
-              ''
-            ).trim().slice(0, 100);
-          }
-
-          function classSignature(el) {
-            const classes = Array.from(el.classList).sort().join('.');
-            return el.tagName + (classes ? '.' + classes : '');
-          }
-
-          function tagId(el, id) {
-            el.setAttribute('data-agent-id', id);
-          }
-
-          const BUTTON_SEL = 'button, [role="button"], input[type="submit"], input[type="button"], a[href]';
-          const INPUT_SEL = 'input:not([type="submit"]):not([type="button"]), textarea, select, [contenteditable="true"]';
-
-          // ---------- 1. Кнопки ----------
-          const buttons = [];
-          document.querySelectorAll(BUTTON_SEL).forEach(el => {
-            if (!isVisible(el)) return;
-            const id = nextId();
-            tagId(el, id);
-            buttons.push({
-              id,
-              tag: el.tagName.toLowerCase(),
-              text: accessibleName(el),
-              href: el.getAttribute('href') || undefined,
-            });
-          });
-
-          // ---------- 2. Инпуты ----------
-          const inputs = [];
-          document.querySelectorAll(INPUT_SEL).forEach(el => {
-            if (!isVisible(el)) return;
-            const id = nextId();
-            tagId(el, id);
-            inputs.push({
-              id,
-              tag: el.tagName.toLowerCase(),
-              type: el.getAttribute('type') || (el.tagName === 'SELECT' ? 'select' : 'text'),
-              name: el.getAttribute('name') || undefined,
-              label: accessibleName(el),
-              value: el.value || undefined,
-            });
-          });
-
-          // ---------- 3. Поиск повторяющихся групп (списки/карточки) ----------
-          const groups = [];
-          const usedElements = new Set();
-          const allEls = document.querySelectorAll('body *');
-
-          for (const parent of allEls) {
-            if (parent.children.length < 3) continue;
-            if (!isVisible(parent)) continue;
-
-            const buckets = {};
-            for (const child of parent.children) {
-              if (!isVisible(child)) continue;
-              if (child.classList.length === 0) continue;
-              const sig = classSignature(child);
-              (buckets[sig] = buckets[sig] || []).push(child);
-            }
-
-            for (const sig in buckets) {
-              const items = buckets[sig];
-              if (items.length < 3) continue;
-              // пропускаем, если эти элементы уже вошли в другую (более внешнюю) группу
-              if (items.some(el => usedElements.has(el))) continue;
-
-              items.forEach(el => usedElements.add(el));
-
-              const groupItems = items.slice(0, 20).map(el => {
-                const itemId = nextId();
-                tagId(el, itemId);
-
-                const innerButtons = [];
-                el.querySelectorAll(BUTTON_SEL).forEach(b => {
-                  if (!isVisible(b)) return;
-                  const bid = nextId();
-                  tagId(b, bid);
-                  innerButtons.push({ id: bid, text: accessibleName(b) });
-                });
-
-                const innerInputs = [];
-                el.querySelectorAll(INPUT_SEL).forEach(i => {
-                  if (!isVisible(i)) return;
-                  const iid = nextId();
-                  tagId(i, iid);
-                  innerInputs.push({ id: iid, type: i.getAttribute('type') || 'text', label: accessibleName(i) });
-                });
-
-                return {
-                  id: itemId,
-                  text: (el.innerText || '').trim().slice(0, 150),
-                  buttons: innerButtons,
-                  inputs: innerInputs,
-                };
-              });
-
-              groups.push({
-                group_id: 'g' + (groups.length + 1),
-                signature: sig,
-                total_count: items.length,
-                shown_count: groupItems.length,
-                items: groupItems,
-              });
-            }
-          }
-
-          // ---------- 4. Одиночные значимые блоки (не попавшие в группы) ----------
-          const singles = [];
-          const SINGLE_SEL = 'h1, h2, h3, [role="heading"], header, nav, main, footer, [role="alert"], [role="dialog"]';
-          document.querySelectorAll(SINGLE_SEL).forEach(el => {
-              if (!isVisible(el)) return;
-              if (usedElements.has(el)) return;
-              const text = (el.innerText || '').trim().slice(0, 150);
-              if (!text) return;
-              const id = nextId();
-              tagId(el, id)
-              singles.push({ id, tag: el.tagName.toLowerCase(), role: el.getAttribute('role') || undefined, text });
-          });
-          return { buttons, inputs, groups, singles };
-        }"""
-        # ruff: enable[E501]
-        page = await self.get_active_page()
-        return await page.evaluate(SNAPSHOT_JS)
 
     def managed_browser(
         self, headless: bool = False, url: str = 'about:blank'

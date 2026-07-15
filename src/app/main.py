@@ -35,8 +35,8 @@ async def main():
     )
     parser.add_argument(
         '--url',
-        default='about:blank',
-        help='Initial URL to navigate to (default: about:blank)',
+        default='chrome://newtab',
+        help='Initial URL to navigate to (chrome://new-tab)',
     )
     parser.add_argument(
         '--headless', action='store_true', help='Run browser in headless mode'
