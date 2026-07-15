@@ -1,3 +1,6 @@
-BASE_URL=
-API_KEY=
-MODEL_NAME=
+CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+USER_DATA_DIR=C:\chrome-agent-profile
+
+BASE_URL=https://api.openai.com/v1
+API_KEY=sk-
+MODEL_NAME=gpt-5-mini

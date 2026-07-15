@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import logging.config
+import subprocess
 
 from agents import (
     Model,
@@ -9,8 +11,9 @@ from agents import (
 )
 from openai import AsyncOpenAI
 
-from src.app.config import config
-from src.app.repl import BrowserREPL
+from app.config import config
+from app.logging import LOGGING
+from app.repl import BrowserREPL
 
 client = AsyncOpenAI(base_url=config.BASE_URL, api_key=config.API_KEY)
 set_tracing_disabled(disabled=True)
@@ -39,6 +42,18 @@ async def main():
         '--headless', action='store_true', help='Run browser in headless mode'
     )
     args = parser.parse_args()
+
+    subprocess.Popen(
+        [
+            rf'{config.CHROME_PATH}',
+            '--remote-debugging-port=9222',
+            rf'--user-data-dir={config.USER_DATA_DIR}',
+            '--no-first-run',
+            '--no-default-browser-check',
+        ]
+    )
+
+    logging.config.dictConfig(LOGGING)
 
     repl = BrowserREPL(CUSTOM_MODEL_PROVIDER)
     await repl.run_interactive(initial_url=args.url, headless=args.headless)
