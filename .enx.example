@@ -1,5 +1,6 @@
 CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 USER_DATA_DIR=C:\chrome-agent-profile
+CHROME_PORT=9222
 
 BASE_URL=https://api.openai.com/v1
 API_KEY=sk-

@@ -9,13 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
-# Misc
+# Directories
 .idea
 .env
 .claude
 .serena
-docs
-tests
+
+# Files
 *.png
 session.db
 session.db-*
