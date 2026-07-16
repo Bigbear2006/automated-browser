@@ -55,7 +55,7 @@ async def main() -> None:
         agent,
         model_provider=CUSTOM_MODEL_PROVIDER,
         session=SQLiteSession('session', 'session.db'),
-        max_turns=20,
+        max_turns=50,
     )
 
     try:

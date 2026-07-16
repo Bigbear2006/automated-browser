@@ -56,4 +56,8 @@ def get_main_agent(browser_manager: BrowserManager) -> Agent:
         handoffs=[extractor_agent, navigator_agent],
         hooks=CustomAgentHooks(),
     )
+
+    extractor_agent.handoffs = [interactor_agent]
+    navigator_agent.handoffs = [interactor_agent]
+
     return interactor_agent

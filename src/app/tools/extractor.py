@@ -16,15 +16,16 @@ class ExtractorAgentTools(BaseAgentTools):
             )
         ]
 
-    async def get_snapshot(self, depth: int | None = None) -> str:
+    async def get_snapshot(self) -> str:
         """Get current page accessibility snapshot with element references.
         The snapshot shows the page structure
         in YAML format with [ref=eX] references
-        that can be used with other tools to interact with elements."""
+        that can be used with other tools to interact with elements.
+        IMPORTANT: If you cannot find element, then use depth = None,
+        so you can see snapshot with all elements
+        """
         page = await self.get_active_page()
-        snapshot = await page.locator('body').aria_snapshot(
-            mode='ai', depth=depth
-        )
+        snapshot = await page.locator('body').aria_snapshot(mode='ai')
         return snapshot
 
     async def search_elements(
@@ -121,7 +122,7 @@ class ExtractorAgentTools(BaseAgentTools):
 
 
 # Tags that map directly to an interactable target (used to bias ranking).
-_INTERACTIVE_TAGS = {'button', 'a', 'input', 'textarea', 'select'}
+_INTERACTIVE_TAGS = {'input', 'button', 'a', 'textarea', 'select'}
 
 # ruff: disable[E501]
 SEARCH_JS = r"""

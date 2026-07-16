@@ -15,7 +15,7 @@ class CustomAgentHooks(AgentHooks):
         agent: Agent[Any],
         source: Agent[Any],
     ) -> None:
-        logger.info(f'{source.name} uses subagent {agent.name}\n')
+        logger.info(f'{source.name} uses {agent.name}\n')
 
     async def on_tool_start(
         self,
@@ -27,9 +27,9 @@ class CustomAgentHooks(AgentHooks):
             return
 
         msg = f'{agent.name} uses {tool.name}'
-        if context.tool_input:
-            msg += ' with {context.tool_input}'
-
+        args = getattr(context, 'tool_arguments', None)
+        if args and args != '{}':
+            msg += f' with {context.tool_arguments}'  # type: ignore[attr-defined]
         logger.info(msg)
 
     async def on_tool_end(

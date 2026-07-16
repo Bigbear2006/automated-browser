@@ -1,3 +1,5 @@
+import base64
+
 from agents import FunctionTool, function_tool
 from playwright.async_api import Locator
 
@@ -83,10 +85,19 @@ class InteractorAgentTools(BaseAgentTools):
 
         return f'Could not press key {key} on element {ref}'
 
-    async def screenshot(self) -> bytes:
-        """Take page screenshot"""
+    async def screenshot(self) -> list[dict[str, str]]:
+        """Take page screenshot and return image in base64 format"""
         page = await self.get_active_page()
-        return await page.screenshot()
+        img_data = await page.screenshot()
+        return [
+            {
+                'type': 'image_url',
+                'image_url': (
+                    f'data:image/png;base64,'
+                    f'{base64.b64encode(img_data).decode()}'
+                ),
+            }
+        ]
 
     async def wait(self, timeout: int) -> str:
         """Wait for given number of milliseconds.
