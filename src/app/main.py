@@ -4,11 +4,14 @@ import logging.config
 import subprocess
 
 from agents import SQLiteSession
-from playwright.async_api import async_playwright
+from playwright.async_api import (
+    async_playwright,
+)
 
 from app.agents import get_main_agent
+from app.browser_manager import BrowserManager
 from app.config import config
-from app.logging import LOGGING, logger
+from app.logging import LOGGING
 from app.model_provider import CUSTOM_MODEL_PROVIDER
 from app.repl import BrowserREPL
 
@@ -46,16 +49,8 @@ async def main() -> None:
         f'http://127.0.0.1:{config.CHROME_PORT}',
     )
 
-    if browser.contexts:
-        context = browser.contexts[0]
-    else:
-        context = await browser.new_context()
-
-    if not context.pages:
-        await context.new_page()
-        logger.info('[*] Opened a new page')
-
-    agent = get_main_agent(browser, context)
+    browser_manager = await BrowserManager.create(browser)
+    agent = get_main_agent(browser_manager)
     repl = BrowserREPL(
         agent,
         model_provider=CUSTOM_MODEL_PROVIDER,

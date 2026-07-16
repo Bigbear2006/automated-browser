@@ -5,7 +5,7 @@ from agents.tool import Tool
 
 from app.logging import logger
 
-MAX_TOOL_RESULT_LENGTH = 50
+MAX_TOOL_RESULT_LENGTH = 100
 
 
 class CustomAgentHooks(AgentHooks):

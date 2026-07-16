@@ -46,7 +46,7 @@ class InteractorAgentTools(BaseAgentTools):
         count = await locator.count()
 
         if count > 0:
-            await locator.first.click()
+            await locator.first.click(timeout=3000)
             return f'Clicked element {ref}'
 
         return f'Element {ref} not found'

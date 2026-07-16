@@ -1,222 +1,285 @@
-# 🌐 Browser Automation with AI Agent
+# Browser Automation with AI Agent
 
-Интерактивная система автоматизации браузера с поддержкой управления через естественный язык с помощью AI агента.
+Интерактивная система автоматизации браузера, которая управляется ествественными командами. 
+Ядро — мультиагентная система на базе SDK `openai-agents`,
+которая управляет реальным браузером через Playwright (CDP) и решает задачи
+пользователя, вызывая набор инструментов: навигация, извлечение элементов
+страницы, клики, ввод текста и т.д.
 
-## ✨ Особенности
+## Содержание
 
-- **🤖 AI-управление** — автоматизируйте браузер через естественный язык
-- **📄 Accessibility snapshots** — эффективная передача информации о странице (без изображений)
-- **🔧 Инструменты для агента** — навигация, клики, ввод текста, нажатие клавиш
-- **⚡ Асинхронность** — полная поддержка async/await для быстрого выполнения
-- **💬 Интерактивный REPL** — управление браузером прямо из терминала
+- [Требования](#требования)
+- [Быстрый старт](#быстрый-старт)
+- [Структура проекта](#структура-проекта)
+- [Архитектура](#архитектура)
+- [Агенты](#агенты)
+- [agents.yaml](#agentsyaml)
+- [Инструменты](#инструменты)
+- [Ссылки на элементы (refs)](#ссылки-на-элементы-refs)
+- [Конфигурация](#конфигурация)
+- [Качество кода: ruff и mypy](#качество-кода-ruff-и-mypy)
+- [Makefile](#makefile)
+- [Известные ограничения](#известные-ограничения)
 
-## 🚀 Быстрый старт
+## Требования
 
-### Требования
-- Python 3.13+
-- OpenAI API ключ (для использования Claude API)
+- Python 3.13+ (версия фиксируется в `.python-version`).
+- Установленный Google Chrome (путь задаётся в `CHROME_PATH`).
+- Доступ к OpenAI-совместимому API (базовый URL и ключ задаются в `.env`).
+- Зависимости ставятся через `uv` (см. `uv.lock`).
 
-### Установка
+## Быстрый старт
 
 ```bash
-# Установить зависимости
+# 1. Установить зависимости (создаёт .venv и ставит пакет)
 uv sync
 
-# Установить браузеры Playwright
-playwright install
+# 2. Создать файл окружения на основе шаблона и заполнить значения
+cp .enx.example .env
+#    отредактируйте .env: укажите CHROME_PATH, API_KEY, MODEL_NAME и т.д.
+
+# 3. Запустить REPL (Chrome поднимается автоматически через CDP)
+make run
+#    либо с явным URL:
+uv run python -m app.main --url https://example.com
 ```
 
-### Запуск
+После запуска вы попадаете в интерактивный цикл. Команды препроцессируются
+как натуральный язык агентом; служебные команды REPL:
 
-```bash
-# Интерактивный режим с пустой страницей
-python -m src.app.main
+| Команда   | Назначение                                          |
+|-----------|-----------------------------------------------------|
+| `/exit`   | Закрыть браузер и выйти                             |
+| `/clear`  | Очистить контекст сессии (SQLite-сессия)            |
+| `/help`   | Показать справку по командам                        |
 
-# С начальным URL
-python -m src.app.main --url https://example.com
-
-# В headless режиме (без видимого окна)
-python -m src.app.main --url https://example.com --headless
-```
-
-## 💻 Использование
-
-После запуска вы попадаете в интерактивный REPL где можете вводить команды:
-
-```
-[*] Browser Automation REPL
-==================================================
-Starting browser with initial URL: about:blank
-Type 'help' for commands, 'exit' to quit
-==================================================
-[+] Browser launched
-
-> Navigate to google.com
-[*] Processing: Navigate to google.com
---------------------------------------------------
-[Agent response]
-
-> Search for "python automation"
-[*] Processing: Search for "python automation"
---------------------------------------------------
-[Agent response]
-
-> Take a screenshot
-```
-
-## 📚 Доступные команды
-
-| Команда | Описание |
-|---------|---------|
-| `snapshot` | Показать текущий снимок страницы с element references |
-| `<команда>` | Натуральная команда для AI агента |
-| `help` | Справка по доступным командам |
-| `exit` | Закрыть браузер и выход |
-
-## 🎯 Примеры команд
-
-### Навигация
+Примеры ввода:
 
 ```
 Navigate to https://www.wikipedia.org
-Go to google.com
-Open amazon.com
+Click the search box and type hello
+Find the button labeled Subscribe and click it
+Fill the login form with username=john password=secret
 ```
 
-### Взаимодействие с элементами
+## Структура проекта
 
 ```
-Click the search button
-Find and click the login button
-Click the "Read More" link
+automated-browser/
+├── agents.yaml              # Описания агентов: промпты и handoff-описания
+├── pyproject.toml           # Зависимости, конфигурация ruff и mypy
+├── Makefile                 # Цели run и lint
+├── .enx.example             # Шаблон переменных окружения (.env)
+├── uv.lock
+└── src/
+    └── app/
+        ├── __init__.py
+        ├── main.py          # Точка входа: запуск Chrome (CDP) + сборка агента + REPL
+        ├── repl.py          # BrowserREPL: цикл ввода/вывода и вызов Runner
+        ├── agents.py        # Загрузка agents.yaml -> объекты Agent
+        ├── config.py        # dataclass Config (переменные окружения)
+        ├── model_provider.py# CustomModelProvider (OpenAI-совместимый клиент)
+        ├── hooks.py         # CustomAgentHooks: логирование handoff/инструментов
+        ├── logging.py       # Настройка логгера automated-browser
+        └── tools/
+            ├── __init__.py
+            ├── base.py       # BaseAgentTools (ABC): общее состояние и get_active_page
+            ├── extractor.py  # ExtractorAgentTools: извлечение элементов
+            ├── interactor.py # InteractorAgentTools: взаимодействие с элементами
+            └── navigator.py  # NavigatorAgentTools: навигация и вкладки
 ```
 
-### Заполнение форм
+## Архитектура
 
-```
-Type "hello world" in the search box
-Fill the email field with john@example.com
-Find the password input and type secret123
-```
+Поток выполнения:
 
-### Нажатие клавиш
+1. `main.py` запускает Chrome через `subprocess` с флагом
+   `--remote-debugging-port` и подключается к нему по CDP
+   (`chromium.connect_over_cdp`).
+2. `agents.get_main_agent(browser, context)` собирает три агента
+   (см. [Агенты](#агенты)) и возвращает основной агент.
+3. `BrowserREPL` читает команды из терминала и прокидывает их в
+   `Runner.run` из SDK `openai-agents`.
+4. Агент выбирает нужные инструменты (см. [Инструменты](#инструменты)),
+   которые через Playwright взаимодействуют со страницей.
+5. Результат возвращается пользователю; цикл повторяется.
 
-```
-Press Enter to submit
-Hit Escape to close the modal
-Tab to the next field
-```
+Сессия диалога сохраняется в `SQLiteSession` (`session.db`), что позволяет
+агенту помнить контекст между вызовами (команда `/clear` сбрасывает его).
 
-### Комбинированные команды
+## Агенты
 
-```
-Navigate to google.com, search for "weather in Paris", and click the first result
-Fill the login form with username=admin password=test123 and click login
-```
+Система состоит из трёх агентов. Все они описываются в `agents.yaml` и
+собираются в `agents.py`. Основной агент (`interactor`) — точка входа; он
+делегирует работу двум субагентам через механизм handoff SDK `openai-agents`.
 
-## 🔍 Как работают Element References (refs)
+| Агент       | Роль                                                                 | Инструменты (handoff)        |
+|-------------|----------------------------------------------------------------------|------------------------------|
+| `interactor`| Главный агент: анализирует запрос, взаимодействует с элементами       | extractor, navigator (handoff) |
+| `extractor` | Извлекает структуру страницы и ищет элементы по ключевым словам        | (самостоятельный субагент)   |
+| `navigator` | Навигация по URL и управление вкладками браузера                      | (самостоятельный субагент)   |
 
-Aria snapshot возвращает информацию о странице с element references:
+Каждому агенту назначаются `CustomAgentHooks`, которые логируют факт
+handoff-а и вызовы инструментов (входные аргументы и усечённый до 50
+символов результат).
+
+## agents.yaml
+
+Файл `agents.yaml` — единственный источник истины для текстовых описаний
+агентов. Структура:
 
 ```yaml
-- heading "My Website" [level=1] [ref=e1]
-- paragraph [ref=e2]: Welcome to my site
-- textbox "Search:" [ref=e3]
-- button "Search" [ref=e4]
-- link "Home" [ref=e5]
+interactor:
+  name: Browser Automation Agent
+  instructions: |
+    You are a browser automation assistant.
+    ...
+  handoff_description: ...   # опционально
+
+extractor:
+  name: Extractor Agent
+  handoff_description: ...
+  instructions: |
+    ...
+
+navigator:
+  name: Navigator Agent
+  handoff_description: ...
+  instructions: |
+    ...
 ```
 
-Каждый элемент имеет `[ref=eX]`:
-- `e0`, `e1`, `e2` ... глобальные индексы элементов на странице
-- AI агент видит эти refs и использует их автоматически
-- **Вам не нужно запоминать refs** — агент о них знает!
+Поля каждого агента:
 
-Кроме `eN` (из снимка), инструмент `search_elements(keywords)` возвращает
-собственные ссылки вида `s0`, `s1`, ... — они записываются прямо в DOM
-(атрибут `data-agent-ref`) и также кликабельны: результат можно сразу
-передать в `click_element("s0")` / `type_into_element("s0", ...)`.
+- `name` — отображаемое имя агента.
+- `instructions` — системный промпт (может быть многострочным, через `|`).
+- `handoff_description` — описание, по которому главный агент понимает,
+  когда делегировать задачу этому субагенту.
 
-## 🛠️ Архитектура
+Загрузка выполняется в `agents.py`:
 
-### Компоненты
+- `load_agents_settings()` читает YAML и превращает каждый раздел в
+  dataclass `AgentInfo` (`name`, `instructions`, `handoff_description`),
+  собирая `AgentsSettings`.
+- `get_main_agent(browser, context)` строит объекты `Agent` через
+  `**asdict(...)`, подставляя соответствующие инструменты
+  (`ExtractorAgentTools`, `NavigatorAgentTools`, `InteractorAgentTools`)
+  и `hooks=CustomAgentHooks()`. Главному агенту прописываются
+  `handoffs=[extractor_agent, navigator_agent]`.
 
-**`browser.py`** — Сервис управления браузером
-- Запуск/закрытие браузера через Playwright
-- Получение accessibility snapshots
-- Взаимодействие с элементами (клики, ввод текста, нажатие клавиш)
+Чтобы изменить поведение агента, достаточно отредактировать `agents.yaml`
+и перезапустить приложение — менять код не нужно.
 
-**`tools.py`** — Tools для AI агента
-- `get_page_snapshot()` — текущий снимок страницы
-- `get_page_elements()` — извлечь input/buttons/текстовые блоки
-- `search_elements(keywords, max_results=10)` — найти элементы по ключевым словам (без учёта регистра) и вернуть ранжированный список с ref для взаимодействия
-- `navigate_to(url)` — перейти по URL
-- `click_element(ref)` — кликнуть элемент
-- `type_into_element(ref, text)` — ввести текст
-- `press_key_on_element(ref, key)` — нажать клавишу
-- `get_current_url()` — получить текущий URL
-- `take_screenshot(filename)` — сделать скриншот
+## Инструменты
 
-**`repl.py`** — Интерактивный REPL
-- Ввод команд пользователя
-- Обработка через AI агента
-- Управление браузером
+Все инструменты реализованы как классы, наследующие `BaseAgentTools`
+(`tools/base.py`) и предоставляющие метод `get_all()`, который возвращает
+список `@function_tool`. Общий код (хранение `browser`/`context` и
+`get_active_page()`) вынесен в базовый класс.
 
-**`main.py`** — Точка входа
-- CLI аргументы
-- Запуск REPL
+### ExtractorAgentTools (`tools/extractor.py`)
 
-## 🧪 Тестирование
+Используется субагентом `extractor` для чтения структуры страницы.
 
-Проверить что все работает:
+| Инструмент                              | Назначение                                                                 |
+|-----------------------------------------|----------------------------------------------------------------------------|
+| `get_snapshot(depth=None)`              | Accessibility-снимок страницы (`aria_snapshot`, режим `ai`) с refs вида `eN` |
+| `search_elements(keywords, max_results=10)` | Поиск элементов по ключевым словам (без учёта регистра), ранжированный список с refs вида `sN` |
 
-```bash
-# Тест основных инструментов
-python test_tools.py
+`search_elements` парсит DOM, собирает видимые элементы с текстом/метками,
+присваивает им устойчивые ссылки `data-agent-ref="s0"`, `s1`, ... и
+ранжирует по близости к ключевым словам (точное вхождение + нечёткое
+сравнение через `difflib`). Возвращает компактные строки, например:
+`[s0] button "Subscribe" (matched: subscribe | score=1.05)`.
 
-# Демонстрация
-python test_demo.py
-```
+### InteractorAgentTools (`tools/interactor.py`)
 
-## 📖 Дополнительные ресурсы
+Используется главным агентом `interactor` для действий с элементами.
 
-- [Примеры использования](docs/EXAMPLES.md)
-- [Playwright документация](https://playwright.dev/python/)
-- [Aria Snapshots](https://playwright.dev/python/docs/aria-snapshots)
+| Инструмент                       | Назначение                                                        |
+|----------------------------------|-------------------------------------------------------------------|
+| `click(ref)`                     | Клик по элементу по ссылке (`eN`, `sN` или текст)                 |
+| `type_text(ref, text)`           | Ввод текста в элемент по ссылке                                    |
+| `press_key(ref, key)`            | Нажатие клавиши (например, `Enter`, `Escape`, `Tab`) на элементе  |
+| `screenshot()`                   | Скриншот текущей страницы (возвращает байты изображения)          |
+| `wait(timeout)`                  | Ожидание `timeout` миллисекунд (если страница ещё не загрузилась) |
 
-## 🔧 Переменные окружения
+### NavigatorAgentTools (`tools/navigator.py`)
 
-Создайте `.env` файл:
+Используется субагентом `navigator` для навигации и вкладок.
 
-```env
-BASE_URL=https://api.openai.com/v1
-API_KEY=sk-your-api-key-here
-MODEL_NAME=gpt-4o
-```
+| Инструмент                  | Назначение                                          |
+|-----------------------------|-----------------------------------------------------|
+| `get_current_url()`         | Текущий URL активной страницы                       |
+| `navigate(url)`             | Переход по URL                                      |
+| `create_tab(url)`           | Открытие новой вкладки (по умолчанию `about:blank`) |
+| `get_all_tabs()`            | Список всех вкладок: индекс, URL, заголовок         |
+| `get_active_tab_index()`    | Индекс активной вкладки                             |
+| `switch_to_tab(index)`      | Переключение на вкладку по индексу (с 0)            |
+| `close_tab(index)`          | Закрытие вкладки по индексу                         |
 
-Или скопируйте из примера:
+## Ссылки на элементы (refs)
 
-```bash
-cp .env.example .env
-# Отредактируйте .env с вашими данными
-```
+Для взаимодействия с элементами агент использует текстовые ссылки двух видов:
 
-## ⚙️ Поддерживаемые браузеры
+- **Снимок (`eN`)** — генерируются `get_snapshot` (режим `ai` у
+  `aria_snapshot`). Видны в выводе как `[ref=e0]`, `[ref=e1]`, ... и
+  резолвятся по DOM-атрибуту `aria-ref`.
+- **Поиск (`sN`)** — генерируются `search_elements`. Записываются прямо в
+  DOM как атрибут `data-agent-ref="s0"`, `"s1"`, ... и возвращаются в
+  ранжированном списке.
 
-- Chromium (по умолчанию)
-- Firefox (можно изменить в коде)
-- WebKit (Safari)
+Общий механизм резолва `ref -> элемент` (`InteractorAgentTools.find_element`)
+проверяет ссылки в следующем порядке:
 
-## 🐛 Известные ограничения
+1. `aria-ref={ref}` — ссылка из снимка;
+2. `[data-agent-ref={ref}]` — ссылка из `search_elements`;
+3. `get_by_text(ref)` — поиск по видимому тексту элемента.
 
-- **CAPTCHA**: Не поддерживаются системы защиты от ботов
-- **Модальные окна**: Иногда требуют явного закрытия перед доступом к контенту
-- **Очень динамический контент**: Сложные SPA приложения могут требовать дополнительной настройки
-- **PDF**: Для работы с PDF требуется дополнительная обработка
+Таким образом, результат `search_elements` (`sN`) сразу кликабелен и
+передаётся в `click` / `type_text` / `press_key` без дополнительных
+преобразований.
 
-## 📝 Лицензия
+## Конфигурация
 
-MIT
+Вся конфигурация — через переменные окружения, читаемые в `config.py`
+(через библиотеку `environs`). Значения берутся из файла `.env`
+(шаблон — `.enx.example`).
 
----
+| Переменная      | Назначение                                                        |
+|-----------------|-------------------------------------------------------------------|
+| `CHROME_PATH`   | Полный путь к исполняемому файлу Chrome                           |
+| `CHROME_PORT`   | Порт для удалённой отладки CDP (по умолчанию `9222`)              |
+| `USER_DATA_DIR` | Каталог профиля Chrome для CDP-сессии                             |
+| `BASE_URL`      | Базовый URL OpenAI-совместимого API                              |
+| `API_KEY`       | Ключ API                                                          |
+| `MODEL_NAME`    | Имя модели (например, `gpt-5-mini`)                              |
 
-**Создано с ❤️ для автоматизации браузера**
+`main.py` сам запускает Chrome с нужными флагами
+(`--remote-debugging-port`, `--user-data-dir`, `--no-first-run`,
+`--no-default-browser-check`) и подключается к нему по CDP, поэтому
+отдельно поднимать браузер не нужно.
+
+Модель провайдера (`CustomModelProvider` в `model_provider.py`) оборачивает
+`OpenAIChatCompletionsModel` с клиентом `AsyncOpenAI(base_url=BASE_URL,
+api_key=API_KEY)`; трассировка SDK отключена.
+
+## Качество кода: ruff и mypy
+
+Проект использует `ruff` (линтер + форматтер) и `mypy` (статическая
+типизация).
+
+## Makefile
+
+| Цель        | Команда                                  | Назначение                    |
+|-------------|-------------------------------------------|-------------------------------|
+| `make run`  | `python -m app.main`                      | Запуск приложения (REPL)      |
+| `make lint` | `ruff check --fix-only && ruff format && ruff check` | Автоисправление, формат и финальная проверка |
+
+## Известные ограничения
+
+- **CAPTCHA** и системы защиты от ботов не поддерживаются.
+- **Модальные окна** иногда требуют явного закрытия перед доступом к контенту.
+- **Сильно динамический SPA-контент** может требовать явных ожиданий
+  (`wait`) или дополнительной настройки.
+- **PDF** требует отдельной обработки.

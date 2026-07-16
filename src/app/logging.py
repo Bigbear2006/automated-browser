@@ -10,10 +10,14 @@ LOGGING = {
             'format': '[{asctime}] {levelname} {name}: {message}',
             'style': '{',
             'datefmt': '%Y-%m-%d %H:%M:%S',
-        }
+        },
+        'short': {
+            'format': '{message}',
+            'style': '{',
+        },
     },
     'handlers': {
-        'console': {'class': 'logging.StreamHandler', 'formatter': 'default'}
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'short'}
     },
     'loggers': {
         'automated-browser': {

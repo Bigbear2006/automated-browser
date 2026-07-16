@@ -2,8 +2,8 @@ from dataclasses import asdict, dataclass
 
 import yaml
 from agents import Agent
-from playwright.async_api import Browser, BrowserContext
 
+from app.browser_manager import BrowserManager
 from app.hooks import CustomAgentHooks
 from app.tools.extractor import ExtractorAgentTools
 from app.tools.interactor import InteractorAgentTools
@@ -32,24 +32,24 @@ def load_agents_settings() -> AgentsSettings:
         return AgentsSettings(**agents_settings_dict)
 
 
-def get_main_agent(browser: Browser, context: BrowserContext) -> Agent:
+def get_main_agent(browser_manager: BrowserManager) -> Agent:
     agents_settings = load_agents_settings()
 
-    extractor_agent_tools = ExtractorAgentTools(browser, context)
+    extractor_agent_tools = ExtractorAgentTools(browser_manager)
     extractor_agent = Agent(
         **asdict(agents_settings.extractor),
         tools=extractor_agent_tools.get_all(),  # type: ignore[arg-type]
         hooks=CustomAgentHooks(),
     )
 
-    navigator_agent_tools = NavigatorAgentTools(browser, context)
+    navigator_agent_tools = NavigatorAgentTools(browser_manager)
     navigator_agent = Agent(
         **asdict(agents_settings.navigator),
         tools=navigator_agent_tools.get_all(),  # type: ignore[arg-type]
         hooks=CustomAgentHooks(),
     )
 
-    interactor_agent_tools = InteractorAgentTools(browser, context)
+    interactor_agent_tools = InteractorAgentTools(browser_manager)
     interactor_agent = Agent(
         **asdict(agents_settings.interactor),
         tools=interactor_agent_tools.get_all(),  # type: ignore[arg-type]

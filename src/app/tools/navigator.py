@@ -36,6 +36,7 @@ class NavigatorAgentTools(BaseAgentTools):
         page = await self.context.new_page()
         if url != 'about:blank':
             await page.goto(url)
+        self.browser_manager.set_active_page(self.context.pages.index(page))
         return f'Новая вкладка успешно создана. Текущий URL: {page.url}'
 
     async def get_all_tabs(self) -> str:
@@ -60,15 +61,18 @@ class NavigatorAgentTools(BaseAgentTools):
 
     async def switch_to_tab(self, index: int) -> str:
         """Switch tab with given index (starts with 0)"""
-        pages = self.context.pages
-        if index < 0 or index >= len(pages):
+        if index < 0 or index >= len(self.context.pages):
             return (
                 f'Ошибка: Вкладка с индексом {index} не найдена. '
-                f'Всего вкладок: {len(pages)}'
+                f'Всего вкладок: {len(self.context.pages)}'
             )
 
-        await pages[index].bring_to_front()
-        return f'Успешно переключено на вкладку {index}: {pages[index].url}'
+        await self.context.pages[index].bring_to_front()
+        self.browser_manager.set_active_page(index)
+        return (
+            f'Успешно переключено на вкладку {index}: '
+            f'{self.context.pages[index].url}'
+        )
 
     async def close_tab(self, index: int) -> str:
         """Close tab by index"""
@@ -81,4 +85,6 @@ class NavigatorAgentTools(BaseAgentTools):
 
         url_closed = pages[index].url
         await pages[index].close()
+        await self.context.pages[0].bring_to_front()
+        self.browser_manager.set_active_page(0)
         return f'Вкладка с индексом {index} ({url_closed}) успешно закрыта.'
